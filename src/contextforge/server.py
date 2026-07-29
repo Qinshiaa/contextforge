@@ -1,123 +1,69 @@
-"""ContextForge MCP Server — Ana giriş noktası."""
+"""ContextForge MCP Server — FastMCP stabil versiyon."""
 import asyncio
 import json
-from mcp.server.lowlevel import Server
-from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent, ListToolsResult
+from mcp.server.fastmcp import FastMCP
 
 from contextforge.proxy import ProxyManager
 from contextforge.archive import ArchiveDB
 
-
+mcp = FastMCP("ContextForge")
 archive = ArchiveDB()
 proxy = ProxyManager()
-server = Server("ContextForge")
 
+@mcp.tool()
+async def cf_context_status() -> str:
+    """ContextForge durumunu göster."""
+    stats = archive.stats()
+    proxy_count = len(proxy.registry.tools)
+    return (
+        f"📊 ContextForge Durumu\n"
+        f"{'='*40}\n"
+        f"Proxy'lenen tool: {proxy_count}\n"
+        f"Arşiv kayıt: {stats['count']}\n"
+        f"Arşiv boyut: {stats['size_kb']} KB\n"
+        f"Tahmini tasarruf: ~{proxy_count * 300} token/tur\n\n"
+        f"🙏 Token'ları koruyoruz."
+    )
 
-@server.list_tools()
-async def handle_list_tools() -> ListToolsResult:
-    tools = proxy.get_all_tools()
+@mcp.tool()
+async def cf_search_archive(query: str, limit: int = 5) -> str:
+    """Arşivde ara."""
+    results = archive.search(query, limit)
+    if not results:
+        return f"'{query}' için arşivde sonuç yok."
+    lines = [f"📦 '{query}' için {len(results)} sonuç:"]
+    for r in results:
+        lines.append(f"- [{r['tool_name']}] {r['summary'][:100]}... (ID: {r['id']})")
+    return "\n".join(lines)
 
-    # Native ContextForge tools
-    tools.append(Tool(
-        name="cf_context_status",
-        description="ContextForge durumunu ve token tasarruf istatistiklerini göster",
-        inputSchema={"type": "object", "properties": {}}
-    ))
-    tools.append(Tool(
-        name="cf_search_archive",
-        description="Arşivlenmiş tool sonuçlarını doğal dil ile ara",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Arama sorgusu"},
-                "limit": {"type": "integer", "description": "Max sonuç", "default": 5}
-            },
-            "required": ["query"]
-        }
-    ))
-    tools.append(Tool(
-        name="cf_retrieve_archive",
-        description="Arşiv ID'si ile ham sonucu geri getir",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "archive_id": {"type": "string", "description": "Arşiv ID"}
-            },
-            "required": ["archive_id"]
-        }
-    ))
+@mcp.tool()
+async def cf_retrieve_archive(archive_id: str) -> str:
+    """Arşivden getir."""
+    result = archive.retrieve(archive_id)
+    if result:
+        return f"📦 Arşiv: {archive_id}\n\n{json.dumps(result['content'], indent=2, ensure_ascii=False)[:4000]}"
+    return f"Arşiv '{archive_id}' bulunamadı."
 
-    return ListToolsResult(tools=tools)
-
-
-@server.call_tool()
-async def handle_call_tool(name: str, arguments: dict):
-    if name == "cf_context_status":
-        stats = archive.stats()
-        proxy_count = len(proxy.registry.tools)
-        text = (
-            f"📊 ContextForge Durumu\n"
-            f"{'='*40}\n"
-            f"Proxy'lenen tool: {proxy_count}\n"
-            f"Arşiv kayıt: {stats['count']}\n"
-            f"Arşiv boyut: {stats['size_kb']} KB\n"
-            f"Tahmini tasarruf: ~{proxy_count * 300} token/tur (schema)\n"
-            f"                    + ~%90 (sonuç sıkıştırma)\n\n"
-            f"🙏 Token'ları koruyoruz."
-        )
-        return [TextContent(type="text", text=text)]
-
-    if name == "cf_search_archive":
-        query = arguments.get("query", "")
-        limit = arguments.get("limit", 5)
-        results = archive.search(query, limit)
-        if not results:
-            return [TextContent(type="text", text=f"'{query}' için arşivde sonuç yok.")]
-        lines = [f"📦 '{query}' için {len(results)} sonuç:"]
-        for r in results:
-            lines.append(f"- [{r['tool_name']}] {r['summary'][:100]}... (ID: {r['id']})")
-        return [TextContent(type="text", text="\n".join(lines))]
-
-    if name == "cf_retrieve_archive":
-        archive_id = arguments.get("archive_id", "")
-        result = archive.retrieve(archive_id)
-        if result:
-            text = f"📦 Arşiv: {archive_id}\n\n{json.dumps(result['content'], indent=2, ensure_ascii=False)[:4000]}"
-            return [TextContent(type="text", text=text)]
-        return [TextContent(type="text", text=f"Arşiv '{archive_id}' bulunamadı.")]
-
-    # Proxy'lenen tool
-    result = await proxy.call_tool(name, arguments)
-    return [TextContent(type="text", text=result)]
-
-
-async def main():
-    print("""
-╔══════════════════════════════════════════════════════════════════╗
-║                    ContextForge Başlatılıyor...                  ║
-║                    Token'ları koruyoruz 🙏                       ║
-╚══════════════════════════════════════════════════════════════════╝
-""")
+async def add_proxy_tools():
+    """Proxy'lenen tool'ları runtime'da ekle."""
+    print("\n🔧 ContextForge: Proxy sunucular başlatılıyor...")
     await proxy.bootstrap()
+    
+    for name, tool in proxy.registry.tools.items():
+        async def make_handler(tn=name):
+            async def handler(**kwargs):
+                return await proxy.call_tool(tn, kwargs)
+            return handler
+        mcp.add_tool(await make_handler(), name=name)
+    
+    print(f"✅ Toplam {len(proxy.registry.tools)} proxy tool aktif.\n")
 
-    if not proxy.registry.tools:
-        print("⚠️  Proxy tool yok, sadece native tool'lar aktif.")
-
-    print("🚀 MCP Server çalışıyor... (stdio)")
-    try:
-        async with stdio_server(server) as (read, write):
-            await server.run(read, write)
-    finally:
-        await proxy.cleanup()
-
-
-def main_sync():
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\n👋 ContextForge kapatıldı. Token'lar güvende. 🙏")
-
+def main():
+    asyncio.run(add_proxy_tools())
+    mcp.run()
 
 if __name__ == "__main__":
-    main_sync()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n👋 ContextForge kapatıldı. Token'lar güvende. 🙏")
