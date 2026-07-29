@@ -1,6 +1,7 @@
 """ContextForge MCP Server — FastMCP stabil versiyon."""
 import asyncio
 import json
+import sys
 from mcp.server.fastmcp import FastMCP
 
 from contextforge.proxy import ProxyManager
@@ -10,9 +11,13 @@ mcp = FastMCP("ContextForge")
 archive = ArchiveDB()
 proxy = ProxyManager()
 
+def _log(msg):
+    """Log stderr'e yazılır, stdout MCP için ayrılmıştır."""
+    sys.stderr.write(msg + "\n")
+    sys.stderr.flush()
+
 @mcp.tool()
 async def cf_context_status() -> str:
-    """ContextForge durumunu göster."""
     stats = archive.stats()
     proxy_count = len(proxy.registry.tools)
     return (
@@ -27,7 +32,6 @@ async def cf_context_status() -> str:
 
 @mcp.tool()
 async def cf_search_archive(query: str, limit: int = 5) -> str:
-    """Arşivde ara."""
     results = archive.search(query, limit)
     if not results:
         return f"'{query}' için arşivde sonuç yok."
@@ -38,25 +42,21 @@ async def cf_search_archive(query: str, limit: int = 5) -> str:
 
 @mcp.tool()
 async def cf_retrieve_archive(archive_id: str) -> str:
-    """Arşivden getir."""
     result = archive.retrieve(archive_id)
     if result:
         return f"📦 Arşiv: {archive_id}\n\n{json.dumps(result['content'], indent=2, ensure_ascii=False)[:4000]}"
     return f"Arşiv '{archive_id}' bulunamadı."
 
 async def add_proxy_tools():
-    """Proxy'lenen tool'ları runtime'da ekle."""
-    print("\n🔧 ContextForge: Proxy sunucular başlatılıyor...")
+    _log("🔧 ContextForge: Proxy sunucular başlatılıyor...")
     await proxy.bootstrap()
-    
     for name, tool in proxy.registry.tools.items():
         async def make_handler(tn=name):
             async def handler(**kwargs):
                 return await proxy.call_tool(tn, kwargs)
             return handler
         mcp.add_tool(await make_handler(), name=name)
-    
-    print(f"✅ Toplam {len(proxy.registry.tools)} proxy tool aktif.\n")
+    _log(f"✅ Toplam {len(proxy.registry.tools)} proxy tool aktif.")
 
 def main():
     asyncio.run(add_proxy_tools())
@@ -66,4 +66,4 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n👋 ContextForge kapatıldı. Token'lar güvende. 🙏")
+        _log("\n👋 ContextForge kapatıldı. Token'lar güvende. 🙏")

@@ -1,7 +1,5 @@
 #!/usr/bin/env node
 const { spawn, execSync } = require('child_process');
-const path = require('path');
-
 const REPO_PATH = __dirname;
 
 function findPython() {
@@ -12,7 +10,7 @@ function findPython() {
   for (const cmd of cmds) {
     try {
       execSync(`${cmd} --version`, { stdio: 'ignore' });
-      console.log(`✅ Python bulundu: ${cmd}`);
+      console.error(`✅ Python bulundu: ${cmd}`);  // ← console.error
       return cmd;
     } catch {}
   }
@@ -28,13 +26,12 @@ function isInstalled(python) {
 }
 
 function install(python) {
-  console.log('🔧 ContextForge Python paketi kuruluyor...');
+  console.error('🔧 ContextForge Python paketi kuruluyor...');
   try {
     execSync(`${python} -m pip install "${REPO_PATH}" --quiet`, { 
-      stdio: 'inherit',
-      cwd: REPO_PATH 
+      stdio: 'inherit', cwd: REPO_PATH 
     });
-    console.log('✅ Kurulum tamamlandı.');
+    console.error('✅ Kurulum tamamlandı.');
   } catch (e) {
     console.error('❌ Kurulum hatası:', e.message);
     process.exit(1);
@@ -43,12 +40,8 @@ function install(python) {
 
 async function main() {
   const python = findPython();
-  
-  if (!isInstalled(python)) {
-    install(python);
-  }
-  
-  console.log('🚀 ContextForge başlatılıyor...');
+  if (!isInstalled(python)) install(python);
+  console.error('🚀 ContextForge başlatılıyor...');
   
   const child = spawn(python, ['-m', 'contextforge'], {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -56,8 +49,8 @@ async function main() {
   });
   
   process.stdin.pipe(child.stdin);
-  child.stdout.pipe(process.stdout);
-  child.stderr.pipe(process.stderr);
+  child.stdout.pipe(process.stdout);   // ← SADECE MCP mesajları
+  child.stderr.pipe(process.stderr);   // ← Loglar buraya
   
   child.on('exit', (code) => process.exit(code || 0));
   process.on('SIGINT', () => child.kill('SIGINT'));
