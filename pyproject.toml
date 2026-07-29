@@ -1,0 +1,21 @@
+[project]
+name = "contextforge"
+version = "1.0.0"
+description = "Context Optimization Middleware for Claude Desktop MCP"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.6.0",
+]
+
+[project.scripts]
+contextforge = "contextforge.server:main"
+
+[project.urls]
+Homepage = "https://github.com/Qinshiaa/contextforge"
+Issues = "https://github.com/Qinshiaa/contextforge/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

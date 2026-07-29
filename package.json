@@ -1,0 +1,19 @@
+{
+  "name": "contextforge",
+  "version": "1.0.0",
+  "description": "Context Optimization Middleware for Claude Desktop MCP — npx wrapper",
+  "main": "index.js",
+  "bin": {
+    "contextforge": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "postinstall": "node scripts/install-python.js"
+  },
+  "keywords": ["mcp", "claude", "context", "token", "optimization"],
+  "author": "Qinshiaa",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
